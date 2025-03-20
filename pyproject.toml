@@ -1,0 +1,14 @@
+[project]
+name = "prediction-arbs"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.11.14",
+    "aiolimiter>=1.2.1",
+    "numpy>=2.2.4",
+    "polars>=1.25.2",
+    "pytz>=2025.1",
+    "scikit-learn>=1.6.1",
+]
