@@ -40,41 +40,14 @@ class PolymarketClient:
     def _get_markets_file_path(self) -> Path:
         return Path(self.DATA_DIR) / self.MARKETS_FILE
     
-    def _load_existing_markets(self) -> tuple[List[Dict], Optional[str]]:
-        file_path = self._get_markets_file_path()
-        if not file_path.exists():
-            logger.info("No existing markets file found")
-            return [], None
-            
-        logger.info(f"Loading existing markets from {file_path}")
-        with open(file_path, 'r') as f:
-            markets = json.load(f)
-            
-        if not markets:
-            logger.info("Existing markets file is empty")
-            return [], None
-            
-        # Convert to DataFrame to find max start date
-        df = pl.DataFrame(markets)
-        logger.info(f"Loaded {len(markets)} existing markets")
-        
-        if 'startDate' in df.columns:
-            max_start = df['startDate'].max()
-            logger.info(f"Found max start date: {max_start}")
-            return markets, max_start
-            
-        logger.warning("No 'startDate' column found in existing markets")
-        return markets, None
         
     def _save_markets(self, markets: List[Dict]):
         file_path = self._get_markets_file_path()
-        existing_markets, _ = self._load_existing_markets()
+        existing_markets, _ = self._load_existing_markets()        
         
-        # Combine existing and new markets
         all_markets = existing_markets + markets
-        logger.info(f"Combining {len(existing_markets)} existing markets with {len(markets)} new markets")
+        logger.info(f"Combining {len(existing_markets)} existing markets with {len(markets)} new markets")        
         
-        # Convert to DataFrame to remove duplicates
         df = pl.DataFrame(all_markets)
         if len(df) > 0:
             original_count = len(all_markets)
@@ -137,11 +110,9 @@ class PolymarketClient:
         limit: int = 500,
         max_concurrent: int = 5
     ) -> List[Dict]:
-        # Load existing markets and get max start date if needed
-        existing_markets, max_start_date = self._load_existing_markets()
         
-        # If we have existing markets and no start_date_min was provided,
-        # use the max start date from existing markets
+        existing_markets, max_start_date = self._load_existing_markets()                
+        
         if not start_date_min and max_start_date:
             start_date_min = max_start_date
         
@@ -151,8 +122,7 @@ class PolymarketClient:
         
         logger.info("Starting market fetch with concurrent requests")
         
-        while has_more:
-            # Create a batch of concurrent requests
+        while has_more:            
             tasks = []
             for i in range(max_concurrent):
                 offset = current_offset + (i * limit)
@@ -167,12 +137,10 @@ class PolymarketClient:
                         volume_num_min=volume_num_min,
                         liquidity_num_min=liquidity_num_min
                     )
-                )
+                )            
             
-            # Execute concurrent requests
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Process results
+                        
             new_markets = []
             for result in results:
                 if isinstance(result, list) and result:
@@ -185,13 +153,11 @@ class PolymarketClient:
             else:
                 all_markets.extend(new_markets)
                 logger.info(f"Fetched batch of {len(new_markets)} markets, total so far: {len(all_markets)}")
-                current_offset += len(tasks) * limit
+                current_offset += len(tasks) * limit                
                 
-                # If we got fewer markets than requested in any response, we're at the end
                 if any(isinstance(r, list) and len(r) < limit for r in results):
                     has_more = False
-        
-        # Save the new markets
+                
         if all_markets:
             self._save_markets(all_markets)
         

@@ -39,33 +39,16 @@ class KalshiClient:
             
     def _get_markets_file_path(self) -> Path:
         return Path(self.DATA_DIR) / self.MARKETS_FILE
-    
-    def _load_existing_markets(self) -> List[Dict]:
-        file_path = self._get_markets_file_path()
-        if not file_path.exists():
-            logger.info("No existing markets file found")
-            return []
-            
-        logger.info(f"Loading existing markets from {file_path}")
-        with open(file_path, 'r') as f:
-            markets = json.load(f)
-            
-        if not markets:
-            logger.info("Existing markets file is empty")
-            return []
-            
-        logger.info(f"Loaded {len(markets)} existing markets")
-        return markets
         
     def _save_markets(self, markets: List[Dict]):
         file_path = self._get_markets_file_path()
         existing_markets = self._load_existing_markets()
         
-        # Combine existing and new markets
+        
         all_markets = existing_markets + markets
         logger.info(f"Combining {len(existing_markets)} existing markets with {len(markets)} new markets")
         
-        # Convert to DataFrame to remove duplicates based on ticker
+        
         df = pl.DataFrame(all_markets)
         if len(df) > 0:
             original_count = len(all_markets)
@@ -119,17 +102,15 @@ class KalshiClient:
         max_concurrent: int = 5
     ) -> List[Dict]:
         all_markets = []
-        cursors = [None]  # Start with no cursor
+        cursors = [None]  
         has_more = True
         
         logger.info("Starting market fetch with concurrent requests")
         
-        while has_more and cursors:
-            # Take up to max_concurrent cursors
+        while has_more and cursors:            
             current_cursors = cursors[:max_concurrent]
             cursors = cursors[max_concurrent:]
-            
-            # Create tasks for current batch of cursors
+                        
             tasks = [
                 self._fetch_markets_page(
                     cursor=cursor,
@@ -140,11 +121,9 @@ class KalshiClient:
                 )
                 for cursor in current_cursors
             ]
-            
-            # Execute concurrent requests
+                        
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Process results
+                        
             new_markets = []
             for result in results:
                 if isinstance(result, tuple):
@@ -161,11 +140,10 @@ class KalshiClient:
                 all_markets.extend(new_markets)
                 logger.info(f"Fetched batch of {len(new_markets)} markets, total so far: {len(all_markets)}")
             
-            # If no more cursors and no next_cursor was found, we're done
+            
             if not cursors:
                 has_more = False
-        
-        # Save the new markets
+                
         if all_markets:
             self._save_markets(all_markets)
             

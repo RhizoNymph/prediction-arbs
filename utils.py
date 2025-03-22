@@ -9,12 +9,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def kalshi_fee(price):
+def kalshi_fee(price, num_contracts=1):
     """
-    Computes the trading fee for a contract on Kalshi.
-    Fee = ceil(0.07 * price * (1 - price) * 100) / 100, rounding up to the next cent.
+    Computes the trading fee for contracts on Kalshi.
+    
+    Args:
+        price (float): Price of contract in decimal form (e.g. 0.5 for 50 cents)
+        num_contracts (int): Number of contracts being traded
+        
+    Returns:
+        float: Fee in dollars, rounded up to next cent
+        
+    Formula:
+        fees = ceil(0.07 * C * P * (1-P))
+        where:
+        - C = number of contracts
+        - P = price in decimal form
     """
-    return math.ceil(0.07 * price * (1 - price) * 100) / 100.0
+    return math.ceil(0.07 * num_contracts * price * (1 - price) * 100) / 100.0
 
 def load_market_data():
     """Load market data from JSON files"""
@@ -30,28 +42,28 @@ def prepare_market_text(market, platform):
     """Prepare market text for TF-IDF vectorization"""
     if platform == 'kalshi':
         text = f"{market['title']} {market.get('rules_primary', '')} {market.get('rules_secondary', '')}"
-    else:  # polymarket
+    else:  
         text = f"{market['question']} {market.get('description', '')}"
     return text
 
 def find_similar_markets(kalshi_markets, poly_markets, similarity_threshold=0.8):
     """Find similar markets between Kalshi and Polymarket using TF-IDF and cosine similarity"""
     
-    # Prepare text data
+    
     kalshi_texts = [prepare_market_text(m, 'kalshi') for m in kalshi_markets]
     poly_texts = [prepare_market_text(m, 'polymarket') for m in poly_markets]
     
-    # Create and fit TF-IDF vectorizer
+    
     vectorizer = TfidfVectorizer(stop_words='english')
     all_texts = kalshi_texts + poly_texts
     tfidf_matrix = vectorizer.fit_transform(all_texts)
     
-    # Calculate cosine similarity between Kalshi and Polymarket markets
+    
     kalshi_vectors = tfidf_matrix[:len(kalshi_texts)]
     poly_vectors = tfidf_matrix[len(kalshi_texts):]
     similarities = cosine_similarity(kalshi_vectors, poly_vectors)
     
-    # Find pairs above threshold
+    
     similar_pairs = []
     for i, kalshi_market in enumerate(kalshi_markets):
         for j, poly_market in enumerate(poly_markets):
@@ -66,7 +78,7 @@ def calculate_arbitrage_opportunities(similar_pairs):
     
     for kalshi_market, poly_market, similarity in similar_pairs:
         try:
-            # Skip if required fields are missing
+            
             if not all([
                 kalshi_market.get('expiration_time'),
                 poly_market.get('endDate'),
@@ -74,36 +86,34 @@ def calculate_arbitrage_opportunities(similar_pairs):
             ]):
                 continue
                 
-            # Get Kalshi prices
-            kalshi_yes_price = kalshi_market.get('yes_bid', 0) / 100  # Convert cents to decimal
-            kalshi_no_price = kalshi_market.get('no_bid', 0) / 100
             
-            # Get Polymarket prices
+            kalshi_yes_price = kalshi_market.get('yes_ask', 0) / 100  
+            kalshi_no_price = kalshi_market.get('no_ask', 0) / 100
+                        
             poly_prices = json.loads(poly_market['outcomePrices'])
             poly_yes_price = float(poly_prices[0])
             poly_no_price = float(poly_prices[1])
-            
-            # Calculate fees
-            kalshi_yes_fee = kalshi_fee(kalshi_yes_price)
-            kalshi_no_fee = kalshi_fee(kalshi_no_price)
-            
-            # Calculate potential arbitrage opportunities
-            yes_arb = poly_yes_price - kalshi_yes_price - kalshi_yes_fee
-            no_arb = poly_no_price - kalshi_no_price - kalshi_no_fee
-            
-            # Get expiration dates
+                        
+            kalshi_yes_fee = kalshi_fee(kalshi_yes_price, 100) / 100
+            kalshi_no_fee = kalshi_fee(kalshi_no_price, 100) / 100
+                                
+            strat1_cost = kalshi_yes_price + kalshi_yes_fee + poly_no_price
+            strat1_arb = 1 - strat1_cost if strat1_cost < 1 else 0
+                        
+            strat2_cost = kalshi_no_price + kalshi_no_fee + poly_yes_price
+            strat2_arb = 1 - strat2_cost if strat2_cost < 1 else 0
+                        
             kalshi_exp = datetime.fromisoformat(kalshi_market['expiration_time'].replace('Z', '+00:00'))
             poly_exp = datetime.fromisoformat(poly_market['endDate'].replace('Z', '+00:00'))
             nearest_exp = min(kalshi_exp, poly_exp)
-            
-            # Record opportunities with positive arbitrage
-            if yes_arb > 0 or no_arb > 0:
+                        
+            if strat1_arb > 0 or strat2_arb > 0:
                 opportunities.append({
                     'kalshi_market': kalshi_market['title'],
                     'poly_market': poly_market['question'],
                     'similarity_score': similarity,
-                    'yes_arbitrage': yes_arb,
-                    'no_arbitrage': no_arb,
+                    'kalshi_yes_poly_no_arb': strat1_arb,  
+                    'kalshi_no_poly_yes_arb': strat2_arb,  
                     'kalshi_yes_price': kalshi_yes_price,
                     'kalshi_no_price': kalshi_no_price,
                     'poly_yes_price': poly_yes_price,
@@ -115,8 +125,7 @@ def calculate_arbitrage_opportunities(similar_pairs):
                     'poly_id': poly_market['id']
                 })
                 
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
-            # Log error but continue processing other pairs
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:            
             logger.warning(f"Error processing market pair: {str(e)}")
             continue
     
@@ -128,10 +137,9 @@ def generate_arbitrage_report(opportunities):
         return pl.DataFrame()
         
     df = pl.DataFrame(opportunities)
-    
-    # Sort by expiration date and highest arbitrage opportunity
+        
     df = df.sort(
-        by=['expiration_date', 'yes_arbitrage', 'no_arbitrage'],
+        by=['expiration_date', 'kalshi_yes_poly_no_arb', 'kalshi_no_poly_yes_arb'],
         descending=[False, True, True]
     )
     
