@@ -42,23 +42,18 @@ class KalshiClient:
         
     def _save_markets(self, markets: List[Dict]):
         file_path = self._get_markets_file_path()
-        existing_markets = self._load_existing_markets()
         
-        
-        all_markets = existing_markets + markets
-        logger.info(f"Combining {len(existing_markets)} existing markets with {len(markets)} new markets")
-        
-        
-        df = pl.DataFrame(all_markets)
+        # Remove duplicates using polars
+        df = pl.DataFrame(markets)
         if len(df) > 0:
-            original_count = len(all_markets)
+            original_count = len(markets)
             df = df.unique(subset=['ticker'], maintain_order=True)
-            all_markets = df.to_dicts()
-            logger.info(f"Removed {original_count - len(all_markets)} duplicate markets")
+            markets = df.to_dicts()
+            logger.info(f"Removed {original_count - len(markets)} duplicate markets")
             
-        logger.info(f"Saving {len(all_markets)} total markets to {file_path}")
+        logger.info(f"Saving {len(markets)} markets to {file_path}")
         with open(file_path, 'w') as f:
-            json.dump(all_markets, f, indent=2)
+            json.dump(markets, f, indent=2)
             
     async def _fetch_markets_page(
         self,
@@ -86,12 +81,20 @@ class KalshiClient:
                 f"{self.BASE_URL}{self.MARKETS_ENDPOINT}",
                 params=params
             ) as response:
-                response.raise_for_status()
-                data = await response.json()
-                markets = data.get("markets", [])
-                next_cursor = data.get("cursor")
-                logger.info(f"Fetched {len(markets)} markets" + (f" with cursor: {cursor}" if cursor else ""))
-                return markets, next_cursor
+                try:
+                    response.raise_for_status()
+                    # Try to parse as JSON regardless of content type
+                    content = await response.text()
+                    data = json.loads(content)
+                    markets = data.get("markets", [])
+                    next_cursor = data.get("cursor")
+                    logger.info(f"Fetched {len(markets)} markets" + (f" with cursor: {cursor}" if cursor else ""))
+                    return markets, next_cursor
+                except Exception as e:
+                    # Log the response content for debugging
+                    logger.error(f"Response content: {content}")
+                    logger.error(f"Response headers: {response.headers}")
+                    raise
                 
     async def fetch_markets(
         self,
