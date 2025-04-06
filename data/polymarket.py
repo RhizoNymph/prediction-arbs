@@ -43,11 +43,8 @@ class PolymarketClient:
         
     def _save_markets(self, markets: List[Dict]):
         file_path = self._get_markets_file_path()
-        # existing_markets, _ = self._load_existing_markets()        
         
-        # all_markets = existing_markets + markets
-        # logger.info(f"Combining {len(existing_markets)} existing markets with {len(markets)} new markets")        
-        
+        # Remove duplicates using polars
         df = pl.DataFrame(markets)
         if len(df) > 0:
             original_count = len(markets)
@@ -55,7 +52,7 @@ class PolymarketClient:
             markets = df.to_dicts()
             logger.info(f"Removed {original_count - len(markets)} duplicate markets")
             
-        logger.info(f"Saving {len(markets)} total markets to {file_path}")
+        logger.info(f"Saving {len(markets)} markets to {file_path}")
         with open(file_path, 'w') as f:
             json.dump(markets, f, indent=2)
             
