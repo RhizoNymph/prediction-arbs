@@ -43,21 +43,21 @@ class PolymarketClient:
         
     def _save_markets(self, markets: List[Dict]):
         file_path = self._get_markets_file_path()
-        existing_markets, _ = self._load_existing_markets()        
+        # existing_markets, _ = self._load_existing_markets()        
         
-        all_markets = existing_markets + markets
-        logger.info(f"Combining {len(existing_markets)} existing markets with {len(markets)} new markets")        
+        # all_markets = existing_markets + markets
+        # logger.info(f"Combining {len(existing_markets)} existing markets with {len(markets)} new markets")        
         
-        df = pl.DataFrame(all_markets)
+        df = pl.DataFrame(markets)
         if len(df) > 0:
-            original_count = len(all_markets)
+            original_count = len(markets)
             df = df.unique(maintain_order=True)
-            all_markets = df.to_dicts()
-            logger.info(f"Removed {original_count - len(all_markets)} duplicate markets")
+            markets = df.to_dicts()
+            logger.info(f"Removed {original_count - len(markets)} duplicate markets")
             
-        logger.info(f"Saving {len(all_markets)} total markets to {file_path}")
+        logger.info(f"Saving {len(markets)} total markets to {file_path}")
         with open(file_path, 'w') as f:
-            json.dump(all_markets, f, indent=2)
+            json.dump(markets, f, indent=2)
             
     async def _fetch_markets_page(
         self,
@@ -111,10 +111,10 @@ class PolymarketClient:
         max_concurrent: int = 5
     ) -> List[Dict]:
         
-        existing_markets, max_start_date = self._load_existing_markets()                
+        # existing_markets, max_start_date = self._load_existing_markets()                
         
-        if not start_date_min and max_start_date:
-            start_date_min = max_start_date
+        # if not start_date_min and max_start_date:
+        #     start_date_min = max_start_date
         
         all_markets = []
         current_offset = 0
